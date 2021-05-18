@@ -1,246 +1,69 @@
-<p align="center">
-  <a href="https://roots.io/trellis/">
-    <img alt="Trellis" src="https://cdn.roots.io/app/uploads/logo-trellis.svg" height="100">
-  </a>
-</p>
+## What's this?
 
-<p align="center">
-  <a href="LICENSE.md">
-    <img alt="MIT License" src="https://img.shields.io/github/license/roots/trellis?color=%23525ddc&style=flat-square" />
-  </a>
+I had to migrate an unmaintained and old Wordpress subdirectory multisite from shared hosting to a VPS. I am proud of my Google-fu but couldn't find much working or helpful information about getting a subdirectory setup working with Trellis. Hopefully this collection of things that worked for me™ will save you some time and frustration.
 
-  <a href="https://github.com/roots/trellis/releases">
-    <img alt="Release" src="https://img.shields.io/github/release/roots/trellis.svg?style=flat-square" />
-  </a>
+## What you need to change
+All occurrences of /blog/ should be changed to match your path_current_site.
 
-  <a href="https://circleci.com/gh/roots/trellis">
-    <img alt="Build Status" src="https://img.shields.io/circleci/build/gh/roots/trellis?style=flat-square" />
-  </a>
+## nginx-includes
+Once vagrant up'ed and wp db imported to your dev server, you'll find that wp-admin either doesn't work at all or causes an endless redirect. Neither the default rewrites nor the [roots/multisite-url-fixer](https://github.com/roots/multisite-url-fixer)  nor [felixarntz/multisite-fixes](https://github.com/felixarntz/multisite-fixes) were helpful for my subdirectory setup.
 
-  <a href="https://twitter.com/rootswp">
-    <img alt="Follow Roots" src="https://img.shields.io/twitter/follow/rootswp.svg?style=flat-square&color=1da1f2" />
-  </a>
-</p>
+https://github.com/roots/multisite-url-fixer/issues/9#issue-817246045 discovered some working rewrite rules. I have put them in nginx-includes. The second rule is necessary for wp-login etc to redirect to example.com/blog/wp-... instead of example.com/wp-...
 
-<p align="center">
-  <strong>Ansible-powered LEMP stack for WordPress</strong>
-  <br />
-  Built with ❤️
-</p>
+## Deploys
 
-<p align="center">
-  <a href="https://roots.io">Official Website</a> | <a href="https://roots.io/docs/trellis/master/installation/">Documentation</a> | <a href="CHANGELOG.md">Change Log</a>
-</p>
+### tmp_multisite_constants.php error
+I've commented out the two lines that cause the error: https://github.com/roots/trellis/issues/1025#issuecomment-471291803
 
-## Supporting
 
-**Trellis** is an open source project and completely free to use.
+###  WordPress database error Table 'example.wp_blogs' doesn't exist
 
-However, the amount of effort needed to maintain and develop new features and products within the Roots ecosystem is not sustainable without proper financial backing. If you have the capability, please consider donating using the links below:
-
-<div align="center">
-
-[![Donate via Patreon](https://img.shields.io/badge/donate-patreon-orange.svg?style=flat-square&logo=patreon")](https://www.patreon.com/rootsdev)
-[![Donate via PayPal](https://img.shields.io/badge/donate-paypal-blue.svg?style=flat-square&logo=paypal)](https://www.paypal.me/rootsdev)
-
-</div>
-
-## Overview
-
-Ansible playbooks for setting up a LEMP stack for WordPress.
-
-- Local development environment with Vagrant
-- High-performance production servers
-- Zero-downtime deploys for your [Bedrock](https://roots.io/bedrock/)-based WordPress sites
-- [trellis-cli](https://github.com/roots/trellis-cli) for easier management
-
-## What's included
-
-Trellis will configure a server with the following and more:
-
-- Ubuntu 20.04 Focal LTS
-- Nginx (with optional FastCGI micro-caching)
-- PHP 7.4
-- MariaDB (a drop-in MySQL replacement)
-- SSL support (scores an A+ on the [Qualys SSL Labs Test](https://www.ssllabs.com/ssltest/))
-- Let's Encrypt for free SSL certificates
-- HTTP/2 support (requires SSL)
-- Composer
-- WP-CLI
-- sSMTP (mail delivery)
-- MailHog
-- Memcached
-- Fail2ban and ferm
-
-## Documentation
-
-Full documentation is available at [https://roots.io/docs/trellis/master/installation/](https://roots.io/docs/trellis/master/installation/).
-
-## Requirements
-
-Make sure all dependencies have been installed before moving on:
-
-- [Virtualbox](https://www.virtualbox.org/wiki/Downloads) >= 4.3.10
-- [Vagrant](https://www.vagrantup.com/downloads.html) >= 2.1.0
-- **Recommended**: [trellis-cli](https://github.com/roots/trellis-cli)
-
-**Windows user?** [Read the Windows getting started docs](https://roots.io/docs/getting-started/windows/#working-with-trellis) for slightly different installation instructions.
-
-## Installation
-
-### Using trellis-cli
-
-Create a new project:
-
+Your first deploy may fail near the [very end](https://github.com/roots/trellis/issues/482#issue-132127282). Try this:
+ 
 ```bash
-$ trellis new example.com
+$ ssh web@example.com 
+$ cd /srv/www/blog/releases/2021...
+$ wp core multisite-install --allow-root --title="Test" --admin_user="admin" --admin_password="admin" --admin_email="admin@example.com"
 ```
 
-### Manual
+Now, cross your fingers and deploy again.
 
-The recommended directory structure for a Trellis project looks like:
-
-```bash
-example.com/      # → Root folder for the project
-├── trellis/      # → Your clone of this repository
-└── site/         # → A Bedrock-based WordPress site
-    └── web/
-        ├── app/  # → WordPress content directory (themes, plugins, etc.)
-        └── wp/   # → WordPress core (don't touch!)
-```
-
-See a complete working example in the [roots-example-project.com repo](https://github.com/roots/roots-example-project.com).
-
-1. Create a new project directory:
+## Importing your database
 
 ```bash
-$ mkdir example.com && cd example.com
+$ ssh web@example.com
+$ cd /srv/www/blog/current/
+$ wp db import db.sql
+$ wp search-replace --network example.test example.com
 ```
 
-2. Install Trellis:
+- Don't forget the \-\-network
+- Run the search-replace twice for good luck
+
+
+## Bonus: Fixing upload URLs in a network created pre-WP 3.5
+If your multisite was originally created years ago, it may have images stored in blogs.dir/01... . I couldn't figure out how to get the Apache rewrite for that working with nginx. Thankfully, a way to make your network use uploads/sites/01/... is detailed here:
+
+https://anchor.host/removing-legacy-ms-files-php-from-multisite/
+
+The script is quite cool, but I ended up doing the steps manually:
 
 ```bash
-$ git clone --depth=1 git@github.com:roots/trellis.git && rm -rf trellis/.git
+$ trellis db open --app=tableplus development blog
 ```
 
-3. Install Bedrock into the `site` directory:
+- In wp_sitemeta, set ms_files_rewriting to 0. Create it if it doesn't exist.
+- In wp_options for each of your sites, set upload_path and upload_url_path to empty.
+- Copy your uploads folders from blogs.dir/01... to uploads/sites/01...
 
-```bash
-$ composer create-project roots/bedrock site
-```
+## To-do
 
-## Local development setup
+- fix rewrite rules so example.com/blog/wp-admin/ also works without the trailing slash
+- Work on incorporating these fixes into the Trellis docs
 
-### Using trellis-cli
+## Thanks
 
-1. Review the automatically created site in `group_vars/development/wordpress_sites.yml`
-2. Customize settings if necessary
+- The Roots team for making Trellis
+- Everyone who worked hard to get their own subdirectory multisites working in Trellis, and
+- [michaelw85 ](https://github.com/michaelw85) for help pointing me in the right direction.
 
-Start the Vagrant virtual machine:
-
-```bash
-$ trellis up
-```
-
-### Manual
-
-1. Configure your WordPress sites in `group_vars/development/wordpress_sites.yml` and in `group_vars/development/vault.yml`
-2. Ensure you're in the trellis directory: `cd trellis`
-3. Run `vagrant up`
-
-[Read the local development docs](https://roots.io/docs/trellis/master/local-development/#wordpress-installation) for more information.
-
-## Remote server setup (staging/production)
-
-A base Ubuntu 18.04 (Bionic) or Ubuntu 20.04 (Focal LTS) server is required for setting up remote servers.
-
-1. Configure your WordPress sites in `group_vars/<environment>/wordpress_sites.yml` and in `group_vars/<environment>/vault.yml` (see the [Vault docs](https://roots.io/docs/trellis/master/vault/) for how to encrypt files containing passwords)
-2. Add your server IP/hostnames to `hosts/<environment>`
-3. Specify public SSH keys for `users` in `group_vars/all/users.yml` (see the [SSH Keys docs](https://roots.io/docs/trellis/master/ssh-keys/))
-
-### Using trellis-cli
-
-Initialize Trellis (Virtualenv) environment:
-
-```bash
-$ trellis init
-```
-
-Provision the server:
-
-```bash
-$ trellis provision production
-```
-
-Or take advantage of its [Digital Ocean](https://roots.io/r/digitalocean) support to create a Droplet _and_ provision it in a single command:
-
-```bash
-$ trellis droplet create production
-```
-
-### Manual
-
-For remote servers, installing Ansible locally is an additional requirement. See the [docs](https://roots.io/docs/trellis/master/remote-server-setup/#requirements) for more information.
-
-Provision the server:
-
-```bash
-$ ansible-playbook server.yml -e env=<environment>
-```
-
-[Read the remote server docs](https://roots.io/docs/trellis/master/remote-server-setup/) for more information.
-
-## Deploying to remote servers
-
-1. Add the `repo` (Git URL) of your Bedrock WordPress project in the corresponding `group_vars/<environment>/wordpress_sites.yml` file
-2. Set the `branch` you want to deploy (defaults to `master`)
-
-### Using trellis-cli
-
-Deploy a site:
-
-```bash
-$ trellis deploy <environment> <site>
-```
-
-Rollback a deploy:
-
-```bash
-$ trellis rollback <environment> <site>
-```
-
-### Manual
-
-Deploy a site:
-
-```bash
-$ ./bin/deploy.sh <environment> <site>
-```
-
-Rollback a deploy:
-
-```bash
-$ ansible-playbook rollback.yml -e "site=<site> env=<environment>"
-```
-
-[Read the deploys docs](https://roots.io/docs/trellis/master/deployments/) for more information.
-
-## Contributing
-
-Contributions are welcome from everyone. We have [contributing guidelines](https://github.com/roots/guidelines/blob/master/CONTRIBUTING.md) to help you get started.
-
-## Trellis sponsors
-
-Help support our open-source development efforts by [becoming a patron](https://www.patreon.com/rootsdev).
-
-<a href="https://kinsta.com/?kaid=OFDHAJIXUDIV"><img src="https://cdn.roots.io/app/uploads/kinsta.svg" alt="Kinsta" width="200" height="150"></a> <a href="https://k-m.com/"><img src="https://cdn.roots.io/app/uploads/km-digital.svg" alt="KM Digital" width="200" height="150"></a> <a href="https://carrot.com/"><img src="https://cdn.roots.io/app/uploads/carrot.svg" alt="Carrot" width="200" height="150"></a> <a href="https://www.c21redwood.com/"><img src="https://cdn.roots.io/app/uploads/c21redwood.svg" alt="C21 Redwood Realty" width="200" height="150"></a> <a href="https://wordpress.com/"><img src="https://cdn.roots.io/app/uploads/wordpress.svg" alt="WordPress.com" width="200" height="150"></a> <a href="https://motto.ca/roots"><img src="https://cdn.roots.io/app/uploads/motto.svg" alt="Motto" width="200" height="150"></a>
-
-## Community
-
-Keep track of development and community news.
-
-- Participate on the [Roots Discourse](https://discourse.roots.io/)
-- Follow [@rootswp on Twitter](https://twitter.com/rootswp)
-- Read and subscribe to the [Roots Blog](https://roots.io/blog/)
-- Subscribe to the [Roots Newsletter](https://roots.io/subscribe/)
-- Listen to the [Roots Radio podcast](https://roots.io/podcast/)
